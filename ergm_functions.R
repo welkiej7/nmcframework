@@ -4,6 +4,8 @@ require(ergm)
 require(network)
 require(statnet)
 library(coda)
+library(MASS)
+
 
 # Your networks should be in a json file where each key is a simulation 
 # number and each value should be a list of tuples for networks
@@ -225,49 +227,66 @@ evaluate_single_model <- function(fit,
   
   return(result)
 }
+                             
+draw_coefs <- function(fit, n = 1){
+  mu <- coef(fit)
+  Sigma <- vcov(fit)
 
-simulate_without_latent <- function(fit,
-                                    model_name = "model.01",
-                                    nsim = 100) {
-  
-  coefs <- fit[[model_name]]$coefficients
-  formula  <- fit[[model_name]]$formula
-  
-  coefs[['absdiff.Topic2']] <- 0 # Ceteris paribus. 
-  coefs[['absdiff.Topic1:absdiff.Topic2']] <- 0 # Ceteris paribus.
-  
-  
-  network <- simulate(formula, coef = coefs, nsim = nsim)
-  return(network)
-
+  MASS::mvrnorm(n = n, mu = mu, Sigma = Sigma)
 }
 
 simulate_with_latent <- function(fit,
-                                    model_name = "model.01",
-                                    nsim = 100) {
-  
-  coefs <- fit[[model_name]]$coefficients
-  formula  <- fit[[model_name]]$formula
+                                 model_name = "model.01",
+                                 nsim = 100){
 
-  
-  network <- simulate(formula, coef = coefs, nsim = nsim)
-  return(network)
-  
+  m <- fit[[model_name]]
+  formula <- m$formula
+
+  theta_draws <- draw_coefs(m, nsim)
+
+  sims <- vector("list", nsim)
+
+  for(i in 1:nsim){
+    sims[[i]] <- simulate(
+      formula,
+      coef = theta_draws[i, ],
+      nsim = 1
+    )[[1]]
+  }
+
+  return(sims)
 }
 
-save_the_networks <- function(simulations, sim_save_path,
-                              type = "latent"){
-  edges <- list()
-  for(sim in 1:length(simulations)){
-    edges[[sim]] <- network::as.edgelist(simulations[[sim]])
-  }
-  for(network in 1:length(edges)){
-    edges[[network]] <- as.data.frame(edges[[network]])
+simulate_without_latent <- function(fit,
+                                    model_name = "model.01",
+                                    nsim = 100){
+
+  m <- fit[[model_name]]
+  formula <- m$formula
+
+  theta_draws <- draw_coefs(m, nsim) # we respect the colliniearity between the terms.
+
+  latent_terms <- c(
+    "absdiff.Topic2",
+    "absdiff.Topic1:absdiff.Topic2"
+  )
+
+  sims <- vector("list", nsim)
+
+  for(i in 1:nsim){
+
+    theta <- theta_draws[i, ]
+
+    theta[latent_terms] <- 0   # knockout
+
+    sims[[i]] <- simulate(
+      formula,
+      coef = theta,
+      nsim = 1
+    )[[1]]
   }
 
-  for(network in 1:length(edges)){
-    readr::write_csv(edges[[network]], file = paste(sim_save_path,"/",type,'_',network,'.csv',sep = ""))
-  }
+  return(sims)
 }
 
 run_latent_pipeline <- function(simulations,
