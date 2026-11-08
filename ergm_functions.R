@@ -267,8 +267,7 @@ simulate_without_latent <- function(fit,
   theta_draws <- draw_coefs(m, nsim) # we respect the colliniearity between the terms.
 
   latent_terms <- c(
-    "absdiff.Topic2",
-    "absdiff.Topic1:absdiff.Topic2"
+    "absdiff.Topic1",
   )
 
   sims <- vector("list", nsim)
